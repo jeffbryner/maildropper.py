@@ -4,8 +4,15 @@ import sys
 import maildropper
 from subprocess import getoutput
 
-print('qmail env asks for delivery to {0}@{1}\n'.format(os.environ['EXT'],os.environ['HOST']))
-homedir=getoutput('vuserinfo -d {0}@{1}'.format(os.environ['EXT'],os.environ['HOST']))
+deliverytarget='{0}@{1}'.format(os.environ['EXT'],os.environ['HOST'])
+print('qmail env asks for delivery to {0}\n'.format(deliverytarget))
+
+#alias?
+#check for valias output: alas@somedomain.com -> realacct@otherdomain.com
+alias=getoutput('/var/vpopmail/bin/valias {0}'.format(deliverytarget))
+if len(alias):
+    deliverytarget=alias.split('->')[1].strip()
+homedir=getoutput('/var/vpopmail/bin/vuserinfo -d {0}'.format(deliverytarget))
 homedir=homedir+'/.maildir'
 print("Homedir is " +homedir)
 
