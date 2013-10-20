@@ -26,6 +26,8 @@ print(m.home)
 if 'Subject' in m.headers:
     if m.headers['Subject'].startswith('[SPAM]'):
         m.drop('spam')
+    else:
+        m.drop()
 else:    
     m.drop()
 
