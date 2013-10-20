@@ -12,7 +12,13 @@ print('qmail env asks for delivery to {0}\n'.format(deliverytarget))
 alias=getoutput('/var/vpopmail/bin/valias {0}'.format(deliverytarget))
 if len(alias):
     deliverytarget=alias.split('->')[1].strip()
+
+#get homedir/check valid user    
 homedir=getoutput('/var/vpopmail/bin/vuserinfo -d {0}'.format(deliverytarget))
+if 'no such user' in homedir:
+    print('exiting..no such user')
+    sys.exit(1)
+
 homedir=homedir+'/.maildir'
 print("Homedir is " +homedir)
 
