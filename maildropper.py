@@ -1,80 +1,63 @@
+#!/usr/bin/env python
 import sys
 import os
 import email
 import email.parser
-import email.generator
 import datetime
-
-pjoin = os.path.join
-
+import mailbox
 
 class Maildropper(object):
+    '''
+    Wrapper for mailbox and email to receive qmail input and drop in a qmail maildir
+    '''
     logfile = None
     msg = None
     msg_id = None
     dry_run = None
+    home=None
+    mdir=None
 
-    def __init__(self, logfile=None, dry_run=False):
-        self.msg = email.parser.BytesParser().parse(sys.stdin.buffer)
-        self.dry_run = dry_run
+    def __init__(self, folder=None,logfile=None, dry_run=False):
         if logfile is not None:
             self.logfile = open(logfile, 'a+')
         else:
             self.logfile = sys.stdout
 
+        #set our home directory
+        if folder is None:
+            self.home='./.maildir'
+        else:
+            self.home=folder
+
+        self.mdir=mailbox.Maildir(self.home)
+        
+        self.msg = email.parser.BytesParser().parse(sys.stdin.buffer)
+        self.dry_run = dry_run
+            
         self.now = now = datetime.datetime.now()
-
         self.msg_id = self.msg['X-Maildrop-Id'] = str(hash(now))
+        self.headers=dict(zip(self.msg.keys(), self.msg.values()))
 
-        self.log(('\nDate (datetime.now): {dt_now}'
-                  '\nDate (header): {msg["Date"]}'
-                  '\nFrom: {msg["From"]}'
-                  '\nTo: {msg["To"]}'
-                  '\nSubject: {msg["Subject"]}'
-                  '\nErrors: {msg.defects}').format(dt_now=now, msg=self.msg))
-
-    def _process_flags(self, flags):
-        allowed_flags = {
-            'passed': 'P',
-            'replied': 'R',
-            'seen': 'S',
-            'trashed':'T',
-            'draft': 'D',
-            'flagged': 'F'
-        }
-
-        def inner():
-            for flag in flags:
-                if flag not in allowed_flags:
-                    raise RuntimeError('Flag not allowed: {}'.format(flag))
-
-                yield allowed_flags[flag]
-        return sorted(inner())
-
-    def drop(self, *folder, **flags):
-        folder = pjoin(*folder)
-        filename = self.msg_id + ':2,' + ''.join(self._process_flags(flags))
-        tmp_path = pjoin(folder, 'tmp', filename)
-        new_path = pjoin(folder, 'new', filename)
-
-        self.log(' ===> Writing to {}'.format(new_path))
-
-        if not self.dry_run:
-            try:
-                self.log('Writing tmpfile to {}'.format(tmp_path))
-                with open(tmp_path, 'bw+') as f:
-                    gen = email.generator.BytesGenerator(f)
-                    gen.flatten(self.msg)
-
-                self.log('Linking tmpfile to newfile')
-                os.link(tmp_path, new_path)
-            finally:
-                self.log('Removing tmpfile')
-                os.unlink(tmp_path)
-
-        self.log(' ===> DONE!')
-        sys.exit(0)
-
+        if "Date" in self.headers and "From" in self.headers and "To" in self.headers and "Subject" in self.headers:
+            self.log('Date: {0}\nFrom: {1}\nTo: {2}\nSubject: {3}\n'.format(self.headers['Date'],self.headers['From'],self.headers['To'],self.headers['Subject']))
+        else: 
+            self.log('missing some headers {0}\n'.format(self.headers))
+        
+    def drop(self,folder=None):
+        
+        if folder is None: 
+            self.log(' ===> Writing to {0}\n'.format(self.home))
+            self.mdir.add(self.msg)
+        elif folder not in self.mdir.list_folders():
+            self.mdir.add(self.msg)
+            self.log(' ===> Requested drop point {0} not found\n'.format(folder))
+            self.log(' ===> Writing to {0}\n'.format(self.home))
+        else:
+            self.log(' ===> Writing to {0}\n'.format(folder))
+            self.mdir.get_folder(folder).add(self.msg)
+        
+        
+   
     def log(self, msg):
         if '\n' in msg:
             for sub in msg.split('\n'):
@@ -83,7 +66,7 @@ class Maildropper(object):
             for sub in msg.split('\r'):
                 self.log(sub)
         else:
-            self.logfile.write('\n[' + self.msg_id + ']  ' + msg)
+            self.logfile.write('{0} {1}\n'.format(self.now,msg))
 
     def header(self, name):
         return str(self.msg.get(name, ''))
